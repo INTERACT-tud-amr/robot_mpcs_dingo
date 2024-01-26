@@ -1,6 +1,6 @@
 type: mpc
 mpc:
-  model_name: boxer
+  model_name: dingo-o
   n: 3
   time_horizon: 10
   time_step: 0.1
@@ -25,12 +25,12 @@ mpc:
   control_mode: "acc"
 robot:
   collision_links: 
-    - ee_link
+    - chassis_link
   selfCollision:
     pairs:  []
   urdf_file: boxer_fk.urdf
   root_link: base_link
-  end_link: ee_link
+  end_link: chassis_link
   base_type: diffdrive
 example:
   debug: False

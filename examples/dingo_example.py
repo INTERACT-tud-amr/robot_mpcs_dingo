@@ -3,7 +3,7 @@ from typing import List, Union, Tuple
 import os
 import numpy as np
 import gymnasium as gym
-from urdfenvs.robots.generic_urdf.generic_diff_drive_robot import GenericDiffDriveRobot
+from urdfenvs.robots.generic_urdf import GenericUrdfReacher
 from urdfenvs.sensors.lidar import Lidar
 from urdfenvs.urdf_common.urdf_env import UrdfEnv
 
@@ -17,7 +17,8 @@ from robotmpcs.utils.utils import visualize_constraints_over_N_in_pybullet
 from mpc_example import MpcExample
 
 
-class BoxerMpcExample(MpcExample):
+
+class dingoMpcExample(MpcExample):
 
     def __init__(self, config_file_name: str):
         super().__init__(config_file_name)
@@ -32,14 +33,9 @@ class BoxerMpcExample(MpcExample):
     def initialize_environment(self):
 
         robots = [
-            GenericDiffDriveRobot(
+            GenericUrdfReacher(
                 urdf=os.path.dirname(os.path.abspath(__file__)) + "/assets/boxer/boxer_fk.urdf",
                 mode=self._config['mpc']['control_mode'],
-                actuated_wheels=["wheel_right_joint", "wheel_left_joint"],
-                castor_wheels=["rotacastor_right_joint", "rotacastor_left_joint"],
-                wheel_radius=0.08,
-                wheel_distance=0.494,
-                spawn_rotation=np.pi / 2,
             ),
         ]
 
@@ -101,53 +97,6 @@ class BoxerMpcExample(MpcExample):
             )
         for i in range(self._config['mpc']['time_horizon']):
             self._env.add_visualization(size=[self._r_body, 0.1])
-
-    def compute_point_cloud(self, robot_state: np.ndarray, lidar_obs: np.ndarray) -> np.ndarray:
-        """
-        Computes point cloud based on raw relative lidar measurements.
-        """
-        angle = robot_state[2]
-        rot_matrix = np.array([
-                [np.cos(angle), -np.sin(angle)], 
-                [np.sin(angle), np.cos(angle)],
-        ])
-
-        position_lidar = np.dot(rot_matrix, np.array([0.4, 0.0])) + robot_state[0:2]
-
-        number_rays = lidar_obs.shape[0]//2
-        lidar_observation = lidar_obs.reshape((number_rays, 2))
-        lidar_position = np.array([position_lidar[0], position_lidar[1], 0.02])
-        relative_positions = np.concatenate(
-            (
-                np.reshape(lidar_observation, (number_rays, 2)),
-                np.zeros((number_rays, 1)),
-            ),
-            axis=1,
-        )
-        absolute_positions = relative_positions + np.repeat(
-            lidar_position[np.newaxis, :], number_rays, axis=0
-        )
-        return absolute_positions
-
-    def compute_constraints(self, robot_state: np.ndarray, point_cloud: np.ndarray) -> Tuple[List, List]:
-        """
-        Computes linear constraints given a pointcloud as numpy array.
-        The seed point is the robot_state.
-        """
-        angle = robot_state[2]
-        rot_matrix = np.array([
-                [np.cos(angle), -np.sin(angle)],
-                [np.sin(angle), np.cos(angle)],
-        ])
-
-        position_lidar = np.dot(rot_matrix, np.array([0.4, 0.0])) + robot_state[0:2]
-        lidar_position = np.array([position_lidar[0], position_lidar[1], 0.02])
-
-        self._fsd.set_position(lidar_position)
-        self._fsd.compute_constraints(point_cloud)
-        return list(self._fsd.asdict().values()), self._fsd.constraints()
-
-
 
     def run(self):
         number_lidar_rays = 64
@@ -224,10 +173,10 @@ class BoxerMpcExample(MpcExample):
         return False
 
 def main():
-    boxer_example = BoxerMpcExample(sys.argv[1])
-    boxer_example.initialize_environment()
-    boxer_example.set_mpc_parameter()
-    boxer_example.run()
+    dingo_example = dingoMpcExample(sys.argv[1])
+    dingo_example.initialize_environment()
+    dingo_example.set_mpc_parameter()
+    dingo_example.run()
 
 
 if __name__ == "__main__":

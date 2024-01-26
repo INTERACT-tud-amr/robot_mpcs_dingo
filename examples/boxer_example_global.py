@@ -5,11 +5,13 @@ import numpy as np
 import gymnasium as gym
 from urdfenvs.robots.generic_urdf.generic_diff_drive_robot import GenericDiffDriveRobot
 from urdfenvs.sensors.lidar import Lidar
+from urdfenvs.sensors.occupancy_sensor import OccupancySensor
 from urdfenvs.urdf_common.urdf_env import UrdfEnv
 
 from mpscenes.obstacles.sphere_obstacle import SphereObstacle
 from mpscenes.obstacles.box_obstacle import BoxObstacle
 from mpscenes.goals.goal_composition import GoalComposition
+from robotmpcs.global_planner import globalPlanner
 
 from robotmpcs.utils.free_space_decomposition import FreeSpaceDecomposition
 from robotmpcs.utils.utils import visualize_constraints_over_N_in_pybullet
@@ -33,7 +35,7 @@ class BoxerMpcExample(MpcExample):
 
         robots = [
             GenericDiffDriveRobot(
-                urdf=os.path.dirname(os.path.abspath(__file__)) + "/assets/boxer/boxer_fk.urdf",
+                urdf='boxer.urdf',
                 mode=self._config['mpc']['control_mode'],
                 actuated_wheels=["wheel_right_joint", "wheel_left_joint"],
                 castor_wheels=["rotacastor_right_joint", "rotacastor_left_joint"],
@@ -150,6 +152,9 @@ class BoxerMpcExample(MpcExample):
 
 
     def run(self):
+        for obstacle in self._obstacles:
+            self._env.add_obstacle(obstacle)
+
         number_lidar_rays = 64
         lidar = Lidar(
                 "ee_joint",
@@ -158,17 +163,28 @@ class BoxerMpcExample(MpcExample):
                 plotting_interval=self._plotting_interval,
                 angle_limits=np.array([-np.pi + np.pi/8, -np.pi/8]),
         )
+        val = 40
+        occ_sensor = OccupancySensor(
+            limits=np.array([[-5, 10], [-5, 10], [0, 50 / val]]),
+            resolution=np.array([val + 1, val + 1, 5], dtype=int),
+            interval=100,
+            plotting_interval=100,
+        )
         self._env.add_sensor(lidar, [0])
+        self._env.add_sensor(occ_sensor, [0])
         self._env.set_spaces()
+
+        global_planner = globalPlanner.GlobalPlanner(dim_pixels = occ_sensor._resolution,
+                                                     limits_low = occ_sensor._limits.transpose()[0],
+                                                     limits_high = occ_sensor._limits.transpose()[1],
+                                                     BOOL_PLOTTING=True)
+        global_path = []
 
 
 
         ob, *_ = self._env.reset()
 
-        for obstacle in self._obstacles:
-            self._env.add_obstacle(obstacle)
         self._env.add_goal(self._goal)
-
         ob, *_ = self._env.step(np.array([0.0,0.0]))
 
 
@@ -182,6 +198,13 @@ class BoxerMpcExample(MpcExample):
             vel = np.array((ob['robot_0']['joint_state']['forward_velocity'], qdot[2]), dtype=float)
             lidar_obs = ob['robot_0']['LidarSensor']
             point_cloud = self.compute_point_cloud(q, lidar_obs)
+
+            if i == 0:
+                global_planner.get_occupancy_map(occ_sensor, ob['robot_0']['Occupancy'])
+                goal_pos = self._goal._config.subgoal0.desired_position + [0]
+                global_path, _ = global_planner.get_global_path_astar(start_pos=q, goal_pos=goal_pos)
+                global_planner.add_path_to_env(path_length=len(global_path), env=self._env)
+
 
             # ---START: Preprocessing for planner---
             # This part is the preprocessing of perception for the planner.
@@ -213,7 +236,7 @@ class BoxerMpcExample(MpcExample):
                 break
             if self._plotting_interval > 0 and i % self._plotting_interval == 0:
                 visualize_constraints_over_N_in_pybullet(halfplanes, 0.02)
-            self._env.update_visualizations(plan)
+            self._env.update_visualizations(plan+global_path)
             # ---END: Visualizations---
 
     def check_goal_reaching(self, ob):
